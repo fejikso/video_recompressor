@@ -6,7 +6,7 @@ import { FilterSelector } from './components/FilterSelector';
 import { ModifierSelector } from './components/ModifierSelector';
 import { Settings } from './components/Settings';
 import { Progress } from './components/Progress';
-import { VideoFilter, VideoModifier, VideoOptions, FileStatus } from './types';
+import { VideoFilter, VideoModifier, VideoOptions, FileStatus, LogPayload } from './types';
 import './App.css';
 
 function App() {
@@ -23,13 +23,17 @@ function App() {
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAborted, setIsAborted] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<Record<string, string[]>>({});
+  const [selectedFileLog, setSelectedFileLog] = useState<string | null>(null);
 
   const abortRef = useRef(false);
 
   useEffect(() => {
-    const unlisten = listen<string>('processing-log', (event) => {
-      setLogs((prev) => [...prev, event.payload]);
+    const unlisten = listen<LogPayload>('processing-log', (event) => {
+      setLogs((prev) => {
+        const fileLogs = prev[event.payload.path] || [];
+        return { ...prev, [event.payload.path]: [...fileLogs, event.payload.message] };
+      });
     });
 
     invoke<VideoFilter[]>('get_filters').then(setFilters);
@@ -44,8 +48,12 @@ function App() {
     // Check status for each file
     const checkedFiles = await Promise.all(newFiles.map(async (file) => {
       try {
-        const processed = await invoke<boolean>('check_file_status', { path: file.path });
-        return { ...file, processed };
+        const status = await invoke<string>('check_file_status', { path: file.path });
+        return {
+          ...file,
+          processed: status === 'skipped',
+          status: status === 'skipped' ? 'skipped' : 'pending'
+        } as FileStatus;
       } catch (err) {
         console.error('Failed to check status:', err);
         return file;
@@ -61,6 +69,12 @@ function App() {
 
   const handleRemoveFile = (path: string) => {
     setFiles(prev => prev.filter(f => f.path !== path));
+    setLogs(prev => {
+      const newLogs = { ...prev };
+      delete newLogs[path];
+      return newLogs;
+    });
+    if (selectedFileLog === path) setSelectedFileLog(null);
   };
 
   const handleFilterChange = (selected: string[]) => {
@@ -81,7 +95,10 @@ function App() {
     setIsProcessing(true);
     setIsAborted(false);
     abortRef.current = false;
-    setLogs([]);
+
+    // Clear logs for files about to be processed? Or keep history?
+    // Let's keep history but maybe clear if re-running same file.
+    // For now, just append.
 
     const currentOptions: VideoOptions = {
       ...options,
@@ -95,16 +112,14 @@ function App() {
 
     for (const file of files) {
       if (abortRef.current) {
-        setLogs(prev => [...prev, `Processing aborted before starting ${file.name}.`]);
         break;
       }
-      if (file.status === 'done') {
-        setLogs(prev => [...prev, `Skipping already processed file: ${file.name}`]);
+      if (file.status === 'done' || file.status === 'skipped') {
         continue;
       }
 
       setFiles(prev => prev.map(f => f.path === file.path ? { ...f, status: 'processing' } : f));
-      setLogs(prev => [...prev, `Processing: ${file.name}`]);
+      setSelectedFileLog(file.path); // Auto-select log for current file
 
       try {
         await invoke('process_video', {
@@ -114,50 +129,43 @@ function App() {
 
         if (abortRef.current) {
           setFiles(prev => prev.map(f => f.path === file.path ? { ...f, status: 'aborted' } : f));
-          setLogs(prev => [...prev, `Processing of ${file.name} aborted.`]);
           break;
         }
 
         setFiles(prev => prev.map(f => f.path === file.path ? { ...f, status: 'done', processed: true } : f));
-        setLogs(prev => [...prev, `✓ Finished: ${file.name}`]);
       } catch (err) {
         console.error('Processing failed:', err);
 
         if (abortRef.current) {
           setFiles(prev => prev.map(f => f.path === file.path ? { ...f, status: 'aborted' } : f));
-          setLogs(prev => [...prev, `Processing of ${file.name} aborted.`]);
           break;
         } else {
           setFiles(prev => prev.map(f => f.path === file.path ? { ...f, status: 'error', error: String(err) } : f));
-          setLogs(prev => [...prev, `❌ Failed: ${file.name} - ${err}`]);
         }
       }
     }
 
-    if (abortRef.current) {
-      setLogs(prev => [...prev, 'All tasks aborted.']);
-    } else {
-      setLogs(prev => [...prev, 'All tasks completed.']);
-    }
     setIsProcessing(false);
   };
 
   const handleAbort = async () => {
     abortRef.current = true;
     setIsAborted(true);
-    setLogs(prev => [...prev, 'Attempting to abort current processing...']);
     try {
       await invoke('cancel_processing');
     } catch (err) {
       console.error('Failed to send abort signal:', err);
-      setLogs(prev => [...prev, `Error sending abort signal: ${err}`]);
     }
   };
 
   return (
     <div className="container">
-      <header>
+      <header className="flex justify-between items-center mb-6">
         <h1>Video Reprocessor</h1>
+        <div className="flex gap-2">
+          <a href="https://github.com/fejikso/video_recompressor" target="_blank" className="btn btn-secondary text-sm">GitHub</a>
+          <a href="https://www.buymeacoffee.com/fejikso" target="_blank" className="btn btn-secondary text-sm">Support</a>
+        </div>
       </header>
 
       <main>
@@ -166,6 +174,7 @@ function App() {
             files={files}
             onSelect={handleFileSelect}
             onRemove={handleRemoveFile}
+            onSelectLog={(path) => setSelectedFileLog(path)}
           />
           <Settings options={options} onChange={handleOptionChange} />
 
@@ -203,7 +212,10 @@ function App() {
               onChange={handleModifierChange}
             />
           </div>
-          <Progress logs={logs} />
+          <Progress
+            logs={selectedFileLog ? (logs[selectedFileLog] || []) : []}
+            fileName={selectedFileLog ? files.find(f => f.path === selectedFileLog)?.name : undefined}
+          />
         </div>
       </main>
     </div>

@@ -7,9 +7,10 @@ interface Props {
     files: FileStatus[];
     onSelect: (files: FileStatus[]) => void;
     onRemove: (path: string) => void;
+    onSelectLog: (path: string) => void;
 }
 
-export const FileSelector: React.FC<Props> = ({ files, onSelect, onRemove }) => {
+export const FileSelector: React.FC<Props> = ({ files, onSelect, onRemove, onSelectLog }) => {
     const handleSelectFiles = async () => {
         try {
             const selected = await open({
@@ -69,9 +70,13 @@ export const FileSelector: React.FC<Props> = ({ files, onSelect, onRemove }) => 
                                     </span>
                                 )}
 
-                                {file.status === 'done' && <CheckCircle size={18} className="text-success" style={{ color: 'var(--success)' }} />}
-                                {file.status === 'error' && <AlertCircle size={18} className="text-error" style={{ color: 'var(--error)' }} />}
-                                {file.status === 'processing' && <Clock size={18} className="text-accent animate-spin" style={{ color: 'var(--accent-primary)' }} />}
+                                <div className="cursor-pointer" onClick={() => onSelectLog(file.path)} title="View Log">
+                                    {file.status === 'done' && <CheckCircle size={18} className="text-success" style={{ color: 'var(--success)' }} />}
+                                    {file.status === 'error' && <AlertCircle size={18} className="text-error" style={{ color: 'var(--error)' }} />}
+                                    {file.status === 'processing' && <Clock size={18} className="text-accent animate-spin" style={{ color: 'var(--accent-primary)' }} />}
+                                    {file.status === 'skipped' && <span className="badge badge-info">Skipped</span>}
+                                    {file.status === 'pending' && <span className="text-secondary text-sm">Pending</span>}
+                                </div>
 
                                 <button
                                     className="btn p-1 hover:bg-error/10 hover:text-error"

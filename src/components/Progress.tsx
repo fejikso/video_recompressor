@@ -3,9 +3,10 @@ import { Terminal } from 'lucide-react';
 
 interface Props {
     logs: string[];
+    fileName?: string;
 }
 
-export const Progress: React.FC<Props> = ({ logs }) => {
+export const Progress: React.FC<Props> = ({ logs, fileName }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -20,7 +21,7 @@ export const Progress: React.FC<Props> = ({ logs }) => {
         <div className="card">
             <div className="flex items-center gap-2 mb-4" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
                 <Terminal size={20} className="text-accent" style={{ color: 'var(--accent-primary)' }} />
-                <h2>Processing Log</h2>
+                <h2>Processing Log {fileName ? `- ${fileName}` : ''}</h2>
             </div>
 
             <div

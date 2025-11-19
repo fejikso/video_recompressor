@@ -23,7 +23,12 @@ export interface VideoOptions {
 export interface FileStatus {
   path: string;
   name: string;
-  status: 'pending' | 'processing' | 'done' | 'error' | 'aborted';
+  status: 'pending' | 'processing' | 'done' | 'error' | 'aborted' | 'skipped';
   processed: boolean;
   error?: string;
+}
+
+export interface LogPayload {
+  path: string;
+  message: string;
 }
