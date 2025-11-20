@@ -9,6 +9,7 @@
     -   `App.tsx`: Main application state and logic.
     -   `components/`: UI components (`FileSelector`, `Settings`, etc.).
     -   `types.ts`: TypeScript interfaces shared with backend.
+-   **`.github/workflows/`**: CI/CD pipelines.
 
 ## Development Setup
 
@@ -41,9 +42,22 @@ The `process_video` function in `lib.rs` constructs the FFmpeg command dynamical
 ### Metadata & Skipping
 The app checks for the `reprocessed` metadata tag (or legacy `comment` tag) using `ffprobe` before processing. If found, the file is skipped.
 
-## Building
+## Configuration Files
+The app reads external configuration files for extensibility:
+-   `video_filters.tab`: Tab-separated values defining available video filters.
+-   `video_commands.tab`: Tab-separated values defining command modifiers.
 
-To build the application for production:
+## Building and Release
+
+### Local Build
+To build the application for your current OS:
 ```bash
 npm run tauri build
 ```
+
+### Cross-Platform Release (GitHub Actions)
+We use GitHub Actions to build for Linux, Windows, and macOS automatically.
+
+1.  **Trigger**: Push a tag starting with `v` (e.g., `v0.1.0`).
+2.  **Workflow**: `.github/workflows/release.yml`
+3.  **Output**: The workflow creates a GitHub Release with the compiled binaries/installers attached.

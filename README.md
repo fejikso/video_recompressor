@@ -1,59 +1,43 @@
 # Video Reprocessor
 
-A cross-platform desktop application for reprocessing video files using FFmpeg with a user-friendly interface.
+A powerful, cross-platform desktop application for reprocessing video files using FFmpeg. Designed for ease of use without sacrificing control.
 
-## Features
+## Key Features
 
--   **Batch Processing**: Select multiple video files for processing.
--   **Audio Copy**: The audio stream is copied unmodified (`-c:a copy`) to preserve original quality.
--   **Stabilization**: Optional 2-pass video stabilization using `vid.stab`.
--   **Filters & Modifiers**: Apply various video filters and modifiers loaded from configuration files.
--   **Smart Skipping**: Automatically skips files that have already been reprocessed (detected via metadata).
--   **Metadata Preservation**: Preserves original file timestamps and metadata.
--   **Real-time Logging**: View detailed FFmpeg logs for each file during processing.
--   **Abort Capability**: Cancel processing at any time.
+*   **Batch Processing**: Queue up multiple files and let it run.
+*   **Smart Workflow**: Automatically skips files that have already been processed.
+*   **Quality Preservation**: Copies audio streams unmodified to maintain original sound quality.
+*   **Stabilization**: Integrated 2-pass video stabilization using `vid.stab`.
+*   **Customizable**: Apply various filters and modifiers to suit your needs.
+*   **Safe**: Preserves original file metadata and timestamps.
 
-## Prerequisites
+## Installation
 
-This application requires **FFmpeg** and **FFprobe** to be installed and available in your system's PATH.
+### Prerequisites
+You need **FFmpeg** installed on your system.
 
-### Installation Instructions
+-   **Windows**: Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), extract, and add `bin` to your PATH.
+-   **macOS**: `brew install ffmpeg`
+-   **Linux**: `sudo apt install ffmpeg`
 
--   **Linux (Ubuntu/Debian)**:
-    ```bash
-    sudo apt update
-    sudo apt install ffmpeg
-    ```
--   **macOS**:
-    ```bash
-    brew install ffmpeg
-    ```
--   **Windows**:
-    1.  Download the build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/).
-    2.  Extract the zip file.
-    3.  Add the `bin` folder to your System PATH environment variable.
-    4.  Verify by running `ffmpeg -version` in Command Prompt.
+### Running the App
+Download the latest release for your platform and run the installer or executable.
 
 ## Usage
 
-1.  **Select Files**: Click "Add Videos" to choose the files you want to process.
-2.  **Configure Settings**:
-    -   Adjust **Quality** (CRF), **Preset**, **Codec**, and **Hardware Acceleration** in the left panel.
-    -   Select **Filters** and **Modifiers** from the right panel.
-3.  **Start Processing**: Click "Start Processing".
-    -   The app will process files sequentially.
-    -   Files that have already been processed (tagged with `reprocessed` metadata) will be skipped.
-4.  **View Logs**: Click the status icon next to any file to view its specific processing log.
+1.  **Add Videos**: Drag and drop or select files.
+2.  **Configure**: Choose your desired quality (CRF), preset, and any filters (like Stabilization or Crop).
+3.  **Process**: Hit start. The app handles the rest, providing real-time logs for each file.
 
-## Configuration
+## Advanced Configuration
+The application looks for `video_filters.tab` and `video_commands.tab` in the same directory for custom filter definitions. See the [Developer Guide](README_dev.md) for more details.
 
-The application loads filters and modifiers from the following files in `/mnt/projects/common/`:
--   `video_filters.tab`: Definitions for video filters.
--   `video_commands.tab`: Definitions for modifiers.
+## Support the Author
 
-You can edit these files to add or modify the available options.
+If you find this tool useful, consider supporting its development!
 
-## Links
+[<img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="180" />](https://www.buymeacoffee.com/fejikso)
 
--   [GitHub Repository](https://github.com/fejikso/video_recompressor)
--   [Support the Author](https://www.buymeacoffee.com/fejikso)
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
