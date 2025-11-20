@@ -21,10 +21,10 @@ apps:
 
 parts:
   app:
-    plugin: npm
+    plugin: dump
     source: .
-    npm-include-node: true
-    npm-node-version: 20.10.0
+    build-snaps:
+      - node/20/stable
     build-packages:
       - libwebkit2gtk-4.1-dev
       - libssl-dev
