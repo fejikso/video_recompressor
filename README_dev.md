@@ -56,11 +56,29 @@ npm run tauri build
 ```
 
 ### Cross-Platform Release (GitHub Actions)
-We use GitHub Actions to build for Linux, Windows, and macOS automatically.
+We use GitHub Actions to build for Linux, Windows, and macOS automatically. This includes generating `.deb`, `.rpm`, `.appimage` (Linux), `.msi`/`.exe` (Windows), `.dmg` (macOS), and `.snap` (Snap Store) packages.
 
-1.  **Trigger**: Push a tag starting with `v` (e.g., `v0.1.0`).
-2.  **Workflow**: `.github/workflows/release.yml`
-3.  **Output**: The workflow creates a GitHub Release with the compiled binaries/installers attached.
+#### How to Trigger a Release
+1.  **Update Version**: Ensure `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `snap/snapcraft.yaml` have the new version number (e.g., `0.5.0`).
+2.  **Commit Changes**:
+    ```bash
+    git add .
+    git commit -m "chore: bump version to 0.5.0"
+    git push
+    ```
+3.  **Tag the Release**:
+    Create a tag starting with `v`. This is what tells GitHub Actions to start the build.
+    ```bash
+    git tag v0.5.0
+    git push origin v0.5.0
+    ```
+4.  **Watch the Build**:
+    -   Go to your GitHub repository.
+    -   Click the **Actions** tab.
+    -   You will see a workflow run named "Release". Click it to see progress.
+5.  **Download Assets**:
+    -   Once finished, go to the **Releases** tab (usually on the right sidebar of the repo main page).
+    -   You will see a new "Draft" release (or published release) with all the built files attached.
 
 # License
 
