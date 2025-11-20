@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    new_video_reprocessor_lib::run()
+    video_reprocessor_lib::run()
 }

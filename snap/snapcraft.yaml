@@ -1,6 +1,6 @@
-name: new-video-reprocessor
+name: video-reprocessor
 base: core22
-version: '0.5.0'
+version: '0.5.5'
 summary: Video Reprocessor
 description: |
   A GUI tool to reprocess videos using FFmpeg with various filters and modifiers.
@@ -10,8 +10,8 @@ grade: stable
 confinement: strict
 
 apps:
-  new-video-reprocessor:
-    command: bin/new_video_reprocessor
+  video-reprocessor:
+    command: bin/video_reprocessor
     extensions: [gnome]
     plugs:
       - home
@@ -23,8 +23,6 @@ parts:
   app:
     plugin: dump
     source: .
-    build-snaps:
-      - node/20/stable
     build-packages:
       - libwebkit2gtk-4.1-dev
       - libssl-dev
@@ -34,6 +32,8 @@ parts:
       - pkg-config
       - curl
       - ca-certificates
+      - wget
+      - tar
     stage-packages:
       - libwebkit2gtk-4.1-0
       - libssl3
@@ -46,6 +46,13 @@ parts:
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       source "$HOME/.cargo/env"
       
+      # Install Node.js manually
+      NODE_VERSION=v20.11.0
+      NODE_DISTRO=linux-x64
+      wget https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-$NODE_DISTRO.tar.xz
+      tar -xJvf node-$NODE_VERSION-$NODE_DISTRO.tar.xz
+      export PATH=$PWD/node-$NODE_VERSION-$NODE_DISTRO/bin:$PATH
+      
       npm install
       npm run build
       
@@ -54,4 +61,4 @@ parts:
       cd ..
       
       mkdir -p $SNAPCRAFT_PART_INSTALL/bin
-      cp src-tauri/target/release/new_video_reprocessor $SNAPCRAFT_PART_INSTALL/bin/
+      cp src-tauri/target/release/video_reprocessor $SNAPCRAFT_PART_INSTALL/bin/
