@@ -1,0 +1,52 @@
+name: new-video-reprocessor
+base: core22
+version: '0.5.0'
+summary: Video Reprocessor
+description: |
+  A GUI tool to reprocess videos using FFmpeg with various filters and modifiers.
+  Built with Tauri, React, and Rust.
+
+grade: stable
+confinement: strict
+
+apps:
+  new-video-reprocessor:
+    command: bin/new_video_reprocessor
+    extensions: [gnome]
+    plugs:
+      - home
+      - removable-media
+      - network
+      - opengl
+
+parts:
+  app:
+    plugin: npm
+    source: .
+    npm-node-version: 20.10.0
+    build-snaps:
+      - rust/stable
+    build-packages:
+      - libwebkit2gtk-4.1-dev
+      - libssl-dev
+      - libgtk-3-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+      - pkg-config
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libssl3
+      - libgtk-3-0
+      - libayatana-appindicator3-1
+      - librsvg2-2
+      - ffmpeg
+    override-build: |
+      npm install
+      npm run build
+      
+      cd src-tauri
+      cargo build --release
+      cd ..
+      
+      mkdir -p $SNAPCRAFT_PART_INSTALL/bin
+      cp src-tauri/target/release/new_video_reprocessor $SNAPCRAFT_PART_INSTALL/bin/
