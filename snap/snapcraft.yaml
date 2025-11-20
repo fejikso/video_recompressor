@@ -1,6 +1,6 @@
 name: video-reprocessor
 base: core22
-version: '0.5.6'
+version: '0.5.7'
 summary: Video Reprocessor
 description: |
   A GUI tool to reprocess videos using FFmpeg with various filters and modifiers.
