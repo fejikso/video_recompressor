@@ -61,3 +61,7 @@ We use GitHub Actions to build for Linux, Windows, and macOS automatically.
 1.  **Trigger**: Push a tag starting with `v` (e.g., `v0.1.0`).
 2.  **Workflow**: `.github/workflows/release.yml`
 3.  **Output**: The workflow creates a GitHub Release with the compiled binaries/installers attached.
+
+# License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
