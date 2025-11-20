@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{Emitter, State, AppHandle, Manager};
 use tauri::path::BaseDirectory;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 mod models;
-use models::{VideoFilter, VideoModifier, VideoOptions};
+use models::{VideoFilter, VideoModifier, VideoOptions, ProcessingStats};
 
 const DEFAULT_FILTERS: &str = "short_name\tlong_name\tpriority\tcode
 quart\tquarter size\t10\tscale=iw/4:-1
@@ -32,6 +33,7 @@ sharp\tsharpen\t5\tsmartblur=lr=2.00:ls=-0.90:lt=-5.0:cr=0.5:cs=1.0:ct=1.5
 const DEFAULT_MODIFIERS: &str = "short_name\tlong_name\tcode
 ss\tstart (secs)\t-ss #1
 t\tduration (secs)\t-t #1
+crop\tcrop frame (pixels)\tvf:crop=in_w-2*#1:in_h-2*#1:#1:#1
 ";
 
 struct AppState {
@@ -156,14 +158,84 @@ fn cancel_processing(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_path: String, options: VideoOptions) -> Result<(), String> {
+fn delete_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn show_in_folder(path: String) -> Result<(), String> {
+    let path_buf = PathBuf::from(&path);
+    let parent = path_buf.parent().ok_or("Invalid path")?;
+    opener::open(parent).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    opener::open(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(path, content).map_err(|e| e.to_string())
+}
+
+fn move_file(source: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
+    if std::fs::rename(source, destination).is_ok() {
+        return Ok(());
+    }
+    // Fallback to copy and delete
+    std::fs::copy(source, destination).map_err(|e| e.to_string())?;
+    std::fs::remove_file(source).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn generate_preview(path: String) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join(format!("preview_{}.jpg", uuid::Uuid::new_v4()));
+
+    let output = Command::new("ffmpeg")
+        .args(&[
+            "-y",
+            "-i", &path,
+            "-ss", "0",
+            "-vframes", "1",
+            "-q:v", "2",
+            &output_path.to_string_lossy()
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(format!("Failed to generate preview: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+
+    let image_data = std::fs::read(&output_path).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(output_path); // Cleanup
+
+    use base64::{Engine as _, engine::general_purpose};
+    let base64_string = general_purpose::STANDARD.encode(image_data);
+    
+    Ok(format!("data:image/jpeg;base64,{}", base64_string))
+}
+
+#[tauri::command]
+async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_path: String, options: VideoOptions) -> Result<ProcessingStats, String> {
+    let start_time = Instant::now();
     let input_path_buf = PathBuf::from(&input_path);
     let parent = input_path_buf.parent().ok_or("Invalid input path")?;
     let stem = input_path_buf.file_stem().ok_or("Invalid filename")?.to_string_lossy();
     
+    let original_size = std::fs::metadata(&input_path).map_err(|e| e.to_string())?.len();
+
     // Generate output filename
     let mut suffix_parts = Vec::new();
     
+    if options.stabilize {
+        suffix_parts.push("_stabilized".to_string());
+    }
+
     if !options.filters.is_empty() {
         suffix_parts.push(format!("_{}", options.filters.join("_")));
     }
@@ -177,13 +249,77 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
     let suffixes = suffix_parts.join("");
     let output_filename = format!("{}{}.mp4", stem, suffixes);
     let final_output_path = parent.join(&output_filename);
-    let temp_output_path = parent.join(format!("{}_workinprogress.mp4", stem));
+    
+    // Use system temp dir for intermediate file
+    let temp_dir = std::env::temp_dir();
+    let temp_output_path = temp_dir.join(format!("{}_{}_workinprogress.mp4", stem, uuid::Uuid::new_v4()));
+
+    // Stabilization Pass 1
+    let trf_path = if options.stabilize {
+        let trf_filename = format!("{}_{}.trf", stem, uuid::Uuid::new_v4());
+        Some(temp_dir.join(&trf_filename))
+    } else {
+        None
+    };
+
+    if options.stabilize {
+        if let Some(path) = &trf_path {
+            window.emit("processing-log", LogPayload { path: input_path.clone(), message: "Starting Stabilization Pass 1/2...".to_string() }).map_err(|e| e.to_string())?;
+            
+            // Escape path for filter string: wrap in single quotes and escape existing single quotes
+            let path_str = path.to_string_lossy().replace("'", "'\\''");
+            
+            let mut args_pass1 = Vec::new();
+            args_pass1.push("-y".to_string());
+            args_pass1.push("-i".to_string());
+            args_pass1.push(input_path.clone());
+            args_pass1.push("-vf".to_string());
+            args_pass1.push(format!("vidstabdetect=stepsize=32:shakiness=10:accuracy=15:result='{}'", path_str));
+            args_pass1.push("-f".to_string());
+            args_pass1.push("null".to_string());
+            args_pass1.push("-".to_string());
+
+            let command_str = format!("Command Pass 1: ffmpeg {}", args_pass1.join(" "));
+            window.emit("processing-log", LogPayload { path: input_path.clone(), message: command_str }).map_err(|e| e.to_string())?;
+
+            let mut cmd_pass1 = Command::new("ffmpeg")
+                .args(&args_pass1)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+
+            if let Some(pid) = cmd_pass1.id() {
+                if let Ok(mut guard) = state.current_pid.lock() {
+                    *guard = Some(pid);
+                }
+            }
+
+            let stderr = cmd_pass1.stderr.take().ok_or("Failed to capture stderr")?;
+            let mut reader = BufReader::new(stderr).lines();
+
+            while let Some(line) = reader.next_line().await.map_err(|e| e.to_string())? {
+                 window.emit("processing-log", LogPayload { path: input_path.clone(), message: line }).map_err(|e| e.to_string())?;
+            }
+
+            let status = cmd_pass1.wait().await.map_err(|e| e.to_string())?;
+            
+            if !status.success() {
+                return Err(format!("Stabilization Pass 1 failed. Status: {}", status));
+            }
+            
+            window.emit("processing-log", LogPayload { path: input_path.clone(), message: "Stabilization Pass 1 Complete. Starting Pass 2...".to_string() }).map_err(|e| e.to_string())?;
+        }
+    }
 
     // Build flags string for metadata
     let mut flags_desc = Vec::new();
     flags_desc.push(format!("quality={}", options.quality));
     flags_desc.push(format!("codec={}", options.codec));
     flags_desc.push(format!("preset={}", options.preset));
+    if options.stabilize {
+        flags_desc.push("stabilize=true".to_string());
+    }
     if !options.filters.is_empty() {
         flags_desc.push(format!("filters={}", options.filters.join(",")));
     }
@@ -193,7 +329,7 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
     }
     let reprocessed_tag = flags_desc.join("; ");
 
-    // Build ffmpeg command
+    // Build ffmpeg command (Pass 2 or Single Pass)
     let mut args = Vec::new();
     
     // 1. Global options
@@ -211,35 +347,25 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
     // 3. Encoding Options
     args.push("-map_metadata".to_string()); args.push("0".to_string()); // Copy global metadata
     
-    args.push("-c:a".to_string()); args.push("aac".to_string());
-    args.push("-ac".to_string()); args.push("1".to_string());
-    args.push("-ar".to_string()); args.push("44100".to_string());
+    // Audio Copy
+    args.push("-c:a".to_string()); args.push("copy".to_string());
     
     args.push("-codec:v".to_string()); args.push(options.codec.clone());
     args.push("-qmin".to_string()); args.push("20".to_string());
 
-    // Modifiers
-    for (_, code) in options.modifiers {
-        let parts = shlex::split(&code).ok_or("Failed to parse modifier code")?;
-        args.extend(parts);
+    // Filters & Stabilization
+    let mut filter_chain = Vec::new();
+    
+    if options.stabilize {
+        if let Some(path) = &trf_path {
+             let path_str = path.to_string_lossy().replace("'", "'\\''");
+             filter_chain.push(format!("vidstabtransform=input='{}':zoom=0:smoothing=10", path_str));
+        }
     }
 
-    // Filters
     if !options.filters.is_empty() {
-        // get_filters now requires AppHandle, but process_video doesn't have it directly.
-        // This means get_filters cannot be called here directly without passing AppHandle
-        // to process_video, which is not in the user's instruction.
-        // For now, I'll assume get_filters is called elsewhere or its logic is duplicated.
-        // Given the instruction, I'll keep the original logic for filters here,
-        // but it won't use the new `get_filters` that takes `AppHandle`.
-        // This is a potential inconsistency based on the provided edit block.
-        // However, the instruction only says "Update `get_filters` and `get_modifiers` to use config dir."
-        // It doesn't say to update `process_video`'s call to `get_filters`.
-        // I will make `process_video` call the *new* `get_filters` by adding `app: AppHandle` to its signature.
-        // This is a necessary change for the code to compile and be consistent.
-        let app_handle = window.app_handle(); // Get AppHandle from window
+        let app_handle = window.app_handle();
         let all_filters = get_filters(app_handle.clone())?;
-        let mut filter_codes = Vec::new();
         
         let mut selected_filters: Vec<&VideoFilter> = all_filters.iter()
             .filter(|f| options.filters.contains(&f.short_name))
@@ -247,13 +373,35 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
         selected_filters.sort_by_key(|f| f.priority);
 
         for filter in selected_filters {
-            filter_codes.push(filter.code.clone());
+            filter_chain.push(filter.code.clone());
         }
+    }
+
+    // Modifiers Logic (Fixed)
+    if !options.modifiers.is_empty() {
+        let app_handle = window.app_handle();
+        let all_modifiers = get_modifiers(app_handle.clone())?;
         
-        if !filter_codes.is_empty() {
-            args.push("-vf".to_string());
-            args.push(filter_codes.join(","));
+        for (short_name, value) in options.modifiers {
+            if let Some(modifier_def) = all_modifiers.iter().find(|m| m.short_name == short_name) {
+                let code = modifier_def.code.replace("#1", &value);
+                
+                if code.starts_with("vf:") {
+                    // It's a filter modifier
+                    let filter_code = code.strip_prefix("vf:").unwrap_or(&code);
+                    filter_chain.push(filter_code.to_string());
+                } else {
+                    // It's a standard argument modifier
+                    let parts = shlex::split(&code).ok_or("Failed to parse modifier code")?;
+                    args.extend(parts);
+                }
+            }
         }
+    }
+    
+    if !filter_chain.is_empty() {
+        args.push("-vf".to_string());
+        args.push(filter_chain.join(","));
     }
 
     args.push("-qmax".to_string());
@@ -308,8 +456,15 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
         *guard = None;
     }
 
+    // Cleanup TRF file
+    if let Some(path) = &trf_path {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     if status.success() {
-        std::fs::rename(&temp_output_path, &final_output_path).map_err(|e| e.to_string())?;
+        move_file(&temp_output_path, &final_output_path).map_err(|e| e.to_string())?;
         
         // Copy timestamps
         if let Ok(metadata) = std::fs::metadata(&input_path) {
@@ -318,7 +473,50 @@ async fn process_video(window: tauri::Window, state: State<'_, AppState>, input_
             }
         }
         
-        Ok(())
+        let new_size = std::fs::metadata(&final_output_path).map_err(|e| e.to_string())?.len();
+        let duration_secs = start_time.elapsed().as_secs_f64();
+
+        // Tag Original Logic
+        if options.tag_original {
+            window.emit("processing-log", LogPayload { path: input_path.clone(), message: "Tagging original file...".to_string() }).map_err(|e| e.to_string())?;
+            
+            let temp_tag_path = parent.join(format!("{}_tagged_temp.mp4", stem));
+            
+            let tag_args = vec![
+                "-y".to_string(),
+                "-i".to_string(), input_path.clone(),
+                "-c".to_string(), "copy".to_string(),
+                "-map_metadata".to_string(), "0".to_string(),
+                "-metadata".to_string(), "reprocessed=tagged_as_processed".to_string(),
+                temp_tag_path.to_string_lossy().to_string()
+            ];
+
+            let tag_output = Command::new("ffmpeg")
+                .args(&tag_args)
+                .output()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if tag_output.status.success() {
+                // Replace original with tagged
+                if let Err(e) = move_file(&temp_tag_path, &PathBuf::from(&input_path)) {
+                    window.emit("processing-log", LogPayload { path: input_path.clone(), message: format!("Failed to replace original file with tagged version: {}", e) }).map_err(|e| e.to_string())?;
+                    let _ = std::fs::remove_file(&temp_tag_path); // Cleanup
+                } else {
+                     window.emit("processing-log", LogPayload { path: input_path.clone(), message: "Original file successfully tagged.".to_string() }).map_err(|e| e.to_string())?;
+                }
+            } else {
+                window.emit("processing-log", LogPayload { path: input_path.clone(), message: format!("Failed to tag original file: {}", String::from_utf8_lossy(&tag_output.stderr)) }).map_err(|e| e.to_string())?;
+                let _ = std::fs::remove_file(&temp_tag_path); // Cleanup
+            }
+        }
+
+        Ok(ProcessingStats {
+            duration_secs,
+            original_size,
+            new_size,
+            output_path: final_output_path.to_string_lossy().to_string(),
+        })
     } else {
         if temp_output_path.exists() {
             let _ = std::fs::remove_file(temp_output_path);
@@ -342,7 +540,12 @@ pub fn run() {
             get_modifiers, 
             check_file_status, 
             process_video,
-            cancel_processing
+            cancel_processing,
+            delete_file,
+            show_in_folder,
+            open_file,
+            save_text_file,
+            generate_preview
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

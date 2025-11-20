@@ -1,13 +1,13 @@
-import React from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
-import { VideoOptions } from '../types';
+import { Settings as SettingsIcon, Info } from 'lucide-react';
+import { VideoOptions } from "../types";
 
-interface Props {
+interface SettingsProps {
     options: VideoOptions;
     onChange: (options: VideoOptions) => void;
+    processing: boolean;
 }
 
-export const Settings: React.FC<Props> = ({ options, onChange }) => {
+export default function Settings({ options, onChange, processing }: SettingsProps) {
     const handleChange = (key: keyof VideoOptions, value: any) => {
         onChange({ ...options, [key]: value });
     };
@@ -21,7 +21,15 @@ export const Settings: React.FC<Props> = ({ options, onChange }) => {
 
             <div className="grid grid-cols-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                 <div>
-                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>Quality (CRF)</label>
+                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                        Quality (CRF)
+                        <div className="tooltip-container ml-1" style={{ display: 'inline-block', marginLeft: '0.25rem' }}>
+                            <Info size={14} style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                            <span className="tooltip-text">
+                                Lower CRF means higher quality but larger file size. Recommended: 23.
+                            </span>
+                        </div>
+                    </label>
                     <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <input
                             type="range"
@@ -43,7 +51,15 @@ export const Settings: React.FC<Props> = ({ options, onChange }) => {
                 </div>
 
                 <div>
-                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>Preset</label>
+                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                        Preset
+                        <div className="tooltip-container ml-1" style={{ display: 'inline-block', marginLeft: '0.25rem' }}>
+                            <Info size={14} style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                            <span className="tooltip-text">
+                                Slower presets provide better compression (smaller size) for the same quality. Recommended: Medium or Slow.
+                            </span>
+                        </div>
+                    </label>
                     <select
                         className="input"
                         value={options.preset}
@@ -62,7 +78,15 @@ export const Settings: React.FC<Props> = ({ options, onChange }) => {
                 </div>
 
                 <div>
-                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>Codec</label>
+                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                        Codec
+                        <div className="tooltip-container ml-1" style={{ display: 'inline-block', marginLeft: '0.25rem' }}>
+                            <Info size={14} style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                            <span className="tooltip-text">
+                                HEVC (H.265) offers better compression than H.264 but requires modern hardware. AV1 is best but slow.
+                            </span>
+                        </div>
+                    </label>
                     <select
                         className="input"
                         value={options.codec}
@@ -77,11 +101,20 @@ export const Settings: React.FC<Props> = ({ options, onChange }) => {
                 </div>
 
                 <div>
-                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem' }}>Hardware Acceleration</label>
+                    <label className="block mb-2 font-medium" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                        Hardware Acceleration
+                        <div className="tooltip-container ml-1" style={{ display: 'inline-block', marginLeft: '0.25rem' }}>
+                            <Info size={14} style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                            <span className="tooltip-text">
+                                Not all accelerations are available in all systems. Experiment to see what works best.
+                            </span>
+                        </div>
+                    </label>
                     <select
                         className="input"
                         value={options.hwaccel}
                         onChange={(e) => handleChange('hwaccel', e.target.value)}
+                        disabled={processing}
                     >
                         <option value="none">None (CPU)</option>
                         <option value="auto">Auto</option>
@@ -91,7 +124,45 @@ export const Settings: React.FC<Props> = ({ options, onChange }) => {
                         <option value="videotoolbox">Apple VideoToolbox</option>
                     </select>
                 </div>
+
+                <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="flex items-center gap-2 cursor-pointer" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            checked={options.tag_original}
+                            onChange={(e) => handleChange('tag_original', e.target.checked)}
+                            disabled={processing}
+                        />
+                        <span className="font-medium">Tag Original File as Processed</span>
+                        <div className="tooltip-container">
+                            <Info size={14} style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                            <span className="tooltip-text">
+                                Adds a metadata flag to the ORIGINAL file to mark it as processed. Useful to avoid reprocessing by mistake.
+                            </span>
+                        </div>
+                    </label>
+                </div>
+
+                <div className="checkbox-item">
+                    <input
+                        type="checkbox"
+                        id="stabilize"
+                        checked={options.stabilize}
+                        onChange={(e) => handleChange('stabilize', e.target.checked)}
+                        disabled={processing}
+                    />
+                    <label htmlFor="stabilize">Stabilize Video</label>
+                    <div className="tooltip-container">
+                        <Info size={14} className="text-secondary" />
+                        <span className="tooltip-text">
+                            Applies 2-pass video stabilization using vid.stab.
+                            Pass 1 analyzes the video for shakiness.
+                            Pass 2 applies the stabilization transform.
+                            This process is slower but produces smoother video.
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
     );
-};
+}

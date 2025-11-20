@@ -15,12 +15,22 @@ pub struct VideoModifier {
     pub code: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct VideoOptions {
-    pub filters: Vec<String>, // List of short_names
-    pub modifiers: Vec<(String, String)>, // List of (short_name, value)
+    pub filters: Vec<String>,
+    pub modifiers: Vec<(String, String)>,
     pub quality: u8,
     pub codec: String,
     pub preset: String,
     pub hwaccel: String,
+    pub tag_original: bool,
+    pub stabilize: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ProcessingStats {
+    pub duration_secs: f64,
+    pub original_size: u64,
+    pub new_size: u64,
+    pub output_path: String,
 }

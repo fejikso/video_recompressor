@@ -1,12 +1,18 @@
-import React, { useEffect, useRef } from 'react';
-import { Terminal } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { ProcessingStats } from '../types';
+import { save } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
+import { Download } from 'lucide-react';
 
-interface Props {
+interface ProgressProps {
     logs: string[];
+    status?: string;
     fileName?: string;
+    onCloseLog?: () => void;
+    stats?: ProcessingStats;
 }
 
-export const Progress: React.FC<Props> = ({ logs, fileName }) => {
+export function Progress({ logs, status = 'Idle', fileName, onCloseLog }: ProgressProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -15,35 +21,71 @@ export const Progress: React.FC<Props> = ({ logs, fileName }) => {
         }
     }, [logs]);
 
-    if (logs.length === 0) return null;
+    const handleExportLog = async () => {
+        if (!logs.length || !fileName) return;
+
+        try {
+            const defaultPath = `${fileName.split('.')[0]}_log.txt`;
+            const filePath = await save({
+                defaultPath,
+                filters: [{
+                    name: 'Text File',
+                    extensions: ['txt']
+                }]
+            });
+
+            if (filePath) {
+                await invoke('save_text_file', {
+                    path: filePath,
+                    content: logs.join('\n')
+                });
+            }
+        } catch (err) {
+            console.error('Failed to save log:', err);
+        }
+    };
 
     return (
-        <div className="card">
-            <div className="flex items-center gap-2 mb-4" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <Terminal size={20} className="text-accent" style={{ color: 'var(--accent-primary)' }} />
-                <h2>Processing Log {fileName ? `- ${fileName}` : ''}</h2>
+        <div className="progress-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0' }}>
+                <h3 style={{ margin: 0 }}>
+                    {status} {fileName && `- ${fileName}`}
+                </h3>
+                <div className="flex gap-2">
+                    {logs.length > 0 && (
+                        <button className="btn btn-secondary text-sm flex items-center gap-1" onClick={handleExportLog} title="Export Log to Text File">
+                            <Download size={14} />
+                            Export
+                        </button>
+                    )}
+                    {onCloseLog && (
+                        <button className="btn btn-secondary text-sm" onClick={onCloseLog}>Close Log</button>
+                    )}
+                </div>
             </div>
 
-            <div
-                ref={scrollRef}
-                className="bg-black p-4 rounded font-mono text-sm h-64 overflow-y-auto"
-                style={{
-                    backgroundColor: '#000',
-                    padding: '1rem',
-                    borderRadius: '6px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.85rem',
-                    height: '16rem',
-                    overflowY: 'auto',
-                    color: '#0f0'
-                }}
-            >
-                {logs.map((log, i) => (
-                    <div key={i} className="whitespace-pre-wrap break-all" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                        {log}
+            <div className="logs-container scroll-area" ref={scrollRef} style={{
+                flex: 1,
+                backgroundColor: 'var(--bg-tertiary)',
+                borderRadius: '8px',
+                padding: '1rem',
+                overflowY: 'auto',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                whiteSpace: 'pre-wrap'
+            }}>
+                {logs.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '2rem' }}>
+                        Ready to process...
                     </div>
-                ))}
+                ) : (
+                    logs.map((log, i) => (
+                        <div key={i} style={{ marginBottom: '0.25rem' }}>{log}</div>
+                    ))
+                )}
             </div>
         </div>
     );
-};
+}
+
+export default Progress;

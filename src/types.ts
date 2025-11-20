@@ -18,6 +18,15 @@ export interface VideoOptions {
   codec: string;
   preset: string;
   hwaccel: string;
+  tag_original: boolean;
+  stabilize: boolean;
+}
+
+export interface ProcessingStats {
+  duration_secs: number;
+  original_size: number;
+  new_size: number;
+  output_path: string;
 }
 
 export interface FileStatus {
@@ -26,6 +35,7 @@ export interface FileStatus {
   status: 'pending' | 'processing' | 'done' | 'error' | 'aborted' | 'skipped';
   processed: boolean;
   error?: string;
+  stats?: ProcessingStats;
 }
 
 export interface LogPayload {
